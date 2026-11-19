@@ -113,8 +113,8 @@ Built-in codes (rates are the nominal names used by the standards):
 
 `DvbStandard::S2X` also accepts every DVB-S2 rate, because DVB-S2X includes
 them. DVB codewords are systematic: the first `k` bits are the information
-bits. The BCH outer code, scrambling and bit interleaving are outside the
-scope of this library.
+bits. The BCH outer code and the bit interleaver are provided too (see below); scrambling,
+framing and modulation are outside the scope of this library.
 
 ### Decoding
 
@@ -144,6 +144,29 @@ parallel.decode_batch(llr.data(), num_frames, bits.data(), results.data());
 - **Batching matters.** The SIMD kernels decode `batch_size()` frames at once, one per vector lane: 8/16/32 lanes on AVX2 and 16/32/64 on AVX-512 for Float32/Int16/Int8. A single frame takes about as long as a full batch. For throughput, pass frames in multiples of `batch_size()`, or many batches at once to `ParallelDecoder`.
 - A `Decoder` owns scratch memory and is not thread-safe. Use one per thread, or a `ParallelDecoder`. Both classes can share one matrix through `std::shared_ptr<const SparseMatrix>`.
 - Invalid configurations, and backends that this build or CPU doesn't support, throw `std::invalid_argument`. Check with `ldpc::is_backend_available()`.
+
+### DVB-S2/S2X FEC around the LDPC code: BCH and bit interleaver
+
+The DVB outer code and the bit interleaver are included, so the library covers the whole
+DVB-S2/S2X FEC chain from BBFRAME to FECFRAME and back:
+
+```cpp
+// BCH (EN 302 307-1 clause 5.3.1; S2X normal and short codes, t = 8/10/12)
+ldpc::BchCode bch = ldpc::dvb_bch_code(ldpc::DvbStandard::S2X, ldpc::DvbFrameSize::Normal, "132/180");
+std::vector<std::uint8_t> nbch_bits = bch.encode(bbframe);   // Kbch bits -> Nbch bits (= LDPC k)
+ldpc::BchDecodeResult r = bch.decode(decoded.data());         // corrects up to t errors in place
+
+// Bit interleaver (clause 5.3.3): columns = bits per symbol, read order = the MODCOD's pattern
+ldpc::BlockInterleaver il(64800, {1, 0, 2});                   // e.g. S2X 8PSK 25/36 ("102")
+il.interleave(codeword.data(), tx_bits.data());
+il.deinterleave(rx_llr.data(), codeword_llr.data());           // soft values back to codeword order
+```
+
+`BchCode` also works for any binary BCH code: `BchCode(m, primitive_polynomial, t, n)`.
+The generator is built from the field definition (and the tests check it against the
+standard's polynomial tables), decoding uses a table-driven remainder, Berlekamp-Massey and a
+Chien search over the shortened code. Medium frames (VL-SNR) and the punctured VL-SNR codes
+are not provided.
 
 ### Encoding
 
@@ -232,6 +255,8 @@ include/ldpc/            public API
   decoder.hpp            single-threaded SIMD decoder
   parallel_decoder.hpp   multi-threaded decoder
   encoder.hpp            systematic encoder
+  bch.hpp                BCH outer code (DVB-S2/S2X normal and short frames)
+  interleaver.hpp        DVB block bit interleaver
 src/
   kernel/kernel.hpp           plain-data interface between decoder and kernels
   kernel/layered_min_sum.hpp  the algorithm, written once against a SIMD "traits" type

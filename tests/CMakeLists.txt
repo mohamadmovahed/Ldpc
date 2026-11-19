@@ -1,6 +1,7 @@
 add_executable(ldpc_tests
     test_main.cpp
     test_alist.cpp
+    test_bch.cpp
     test_decoder.cpp
     test_dvb.cpp
     test_encoder.cpp

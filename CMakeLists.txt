@@ -40,11 +40,13 @@ find_package(Threads REQUIRED)
 
 add_library(ldpc
     src/alist.cpp
+    src/bch.cpp
     src/cpu_features.cpp
     src/decoder.cpp
     src/dvb.cpp
     src/dvb_tables.cpp
     src/encoder.cpp
+    src/interleaver.cpp
     src/parallel_decoder.cpp
     src/sparse_matrix.cpp
     src/structure.cpp
